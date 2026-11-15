@@ -35,6 +35,9 @@ export type Inquiry = {
   extracted: { label: string; value: string }[];
   missing: string[];
   status: InquiryStatus;
+  /** Structured request, set for inquiries created from prospecting. */
+  request?: { productCode: string; quantity: number; deliveryCity: string };
+  prospectId?: string;
 };
 
 export type QuoteStatus = "draft" | "pending_approval" | "sent" | "no_reply" | "accepted" | "rejected";
@@ -81,7 +84,7 @@ export type FollowTask = {
 
 export type Activity = { id: string; at: string; text: string; kind: "inquiry" | "quote" | "approval" | "task" | "system" };
 
-export type ChatAction = { label: string; command: string; primary?: boolean };
+export type ChatAction = { label: string; command: string; primary?: boolean; href?: string };
 
 export type ChatMessage = {
   id: string;
@@ -91,6 +94,32 @@ export type ChatMessage = {
   actions?: ChatAction[];
   note?: string;
 };
+
+export type CountryKey = "DE" | "NL" | "FR";
+export type ProductGroup = "chair" | "desk";
+export type ProspectType = "distributor" | "importer" | "retailer";
+export type ProspectStatus = "candidate" | "listed" | "draft" | "contacted" | "replied" | "converted";
+
+export type Prospect = {
+  id: string;
+  company: string;
+  country: CountryKey;
+  city: string;
+  type: ProspectType;
+  groups: ProductGroup[];
+  fit: string;
+  email: string;
+  /** What the sample positive reply asks for. */
+  sampleRequest: { productCode: string; quantity: number };
+  status: ProspectStatus;
+  draft?: { subject: string; body: string };
+  sentAt?: string;
+  reply?: { date: string; body: string; summary: string };
+  customerId?: string;
+  inquiryId?: string;
+};
+
+export type ProspectFilters = { country: CountryKey | "all"; group: ProductGroup | "all"; type: ProspectType | "all" };
 
 /** Last completed step of the scripted scenario (1–7). */
 export type ScenarioStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -105,6 +134,10 @@ export type DemoState = {
   tasks: FollowTask[];
   activities: Activity[];
   chat: ChatMessage[];
+  prospects: Prospect[];
+  prospectFilters: ProspectFilters;
+  /** Whether "Örnek adayları göster" has been run. */
+  prospectsShown: boolean;
   step: ScenarioStep;
   focusApprovalId?: string;
   toast?: string;

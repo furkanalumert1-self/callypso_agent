@@ -73,7 +73,7 @@ export default function AgentPage() {
                   {m.actions && m.actions.length > 0 && m === lastAgent && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {m.actions.map((a) => (
-                        <Button key={a.command} size="sm" variant={a.primary ? "primary" : "secondary"} onClick={() => run(a.command)}>
+                        <Button key={a.label} size="sm" variant={a.primary ? "primary" : "secondary"} href={a.href} onClick={a.href ? undefined : () => run(a.command)}>
                           {a.label}
                         </Button>
                       ))}

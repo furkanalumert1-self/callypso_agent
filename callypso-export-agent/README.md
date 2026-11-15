@@ -19,6 +19,18 @@ npm run build && npm start
 4. "Teklif hazırla" → 200 × €189 = €37.800 (TKF-2032)
 5. Taslağı düzenle → "Onayla ve demo gönder" → teklif "Gönderildi", takip görevi oluşur
 
+## Müşteri Bulma (bağlantılı senaryo)
+
+Örnek veri — gerçek araştırma yapılmaz; 6 kurgusal aday, `.example` alan adları.
+
+1. Müşteri Bulma → Almanya · Ofis koltuğu · Distribütör → "Örnek adayları göster"
+2. Rheinwerk Büroausstattung GmbH → "Listeye ekle" → "İlk temas hazırla" (düzenlenebilir)
+3. "Demo gönderimini onayla" → "Örnek olumlu yanıtı yükle" (200 × E200, Düsseldorf)
+4. "Fırsata dönüştür" → müşteri + TLP-1050 talebi (tekrar oluşturulmaz)
+5. "Ajanda teklif hazırla" → teklif onayı → TKF-2041 gönderildi + takip görevi
+
+Ajan'da "Hedef pazarda müşteri araştır" seçili filtrelerle aynı sonuçları açar.
+
 Diğer komutlar: "Yanıtsız teklifleri bul", "Takip mesajı hazırla". Veriler localStorage'da tutulur;
 üst bardaki "Demoyu sıfırla" başlangıç durumuna döndürür.
 

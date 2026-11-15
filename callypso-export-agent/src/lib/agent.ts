@@ -2,11 +2,12 @@
  * Scripted demo agent. No API or LLM is involved: every supported command maps
  * to a deterministic state transition over the demo data.
  */
-import type { Approval, ChatAction, ChatMessage, DemoState, Quote } from "./types";
+import type { Approval, ChatAction, ChatMessage, DemoState, Inquiry, Quote } from "./types";
+import { COUNTRIES, describeFilters, filterProspects, PROSPECT_STATUS, TYPES } from "./prospects";
 import { DEMO_TODAY, SCENARIO_CUSTOMER, SCENARIO_INQUIRY, SCENARIO_PRODUCT, SCENARIO_QTY } from "./data";
 import { addDays, eur, eurUiCents, formatDate } from "./format";
 
-export const QUICK_COMMANDS = ["Yeni talepleri incele", "Teklif hazırla", "Yanıtsız teklifleri bul", "Takip mesajı hazırla"];
+export const QUICK_COMMANDS = ["Yeni talepleri incele", "Teklif hazırla", "Yanıtsız teklifleri bul", "Takip mesajı hazırla", "Hedef pazarda müşteri araştır"];
 
 export const SCENARIO_STEPS = [
   "Almanya'dan 200 koltuk talebi geldi",
@@ -22,21 +23,21 @@ export const SENT_NOTICE = "Demo gönderimi tamamlandı; gerçek e-posta gönder
 const SCENARIO_QUOTE = "TKF-2032";
 
 let seq = 0;
-const uid = (p: string) => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
+export const uid = (p: string) => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
 export function nowStamp() {
   const d = new Date();
   return `${DEMO_TODAY} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-const agent = (text: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ id: uid("c"), role: "agent", text, ...extra });
-const act = (label: string, primary = false, command = label): ChatAction => ({ label, command, primary });
+export const agent = (text: string, extra: Partial<ChatMessage> = {}): ChatMessage => ({ id: uid("c"), role: "agent", text, ...extra });
+export const act = (label: string, primary = false, command = label): ChatAction => ({ label, command, primary });
 
-function log(s: DemoState, text: string, kind: DemoState["activities"][number]["kind"]): DemoState {
+export function log(s: DemoState, text: string, kind: DemoState["activities"][number]["kind"]): DemoState {
   return { ...s, activities: [{ id: uid("a"), at: nowStamp(), text, kind }, ...s.activities] };
 }
 
-function say(s: DemoState, ...msgs: ChatMessage[]): DemoState {
+export function say(s: DemoState, ...msgs: ChatMessage[]): DemoState {
   return { ...s, chat: [...s.chat, ...msgs] };
 }
 
@@ -66,7 +67,10 @@ function reviewNew(s: DemoState): DemoState {
         const c = customerOf(s, i.customerId);
         return `${i.id} · ${c.company} (${c.country}) — "${i.subject}"`;
       }),
-      actions: [act("Talebi incele", true)],
+      actions: [
+        ...(fresh.some((i) => i.id === SCENARIO_INQUIRY) ? [act("Talebi incele", true)] : []),
+        ...fresh.filter((i) => i.prospectId).map((i) => act(`${i.id} için teklif hazırla`, !fresh.some((x) => x.id === SCENARIO_INQUIRY), `Teklif hazırla ${i.id}`)),
+      ],
     }),
   );
 }
@@ -169,7 +173,68 @@ function loadCustomerReply(s: DemoState): DemoState {
   );
 }
 
-function prepareQuote(s: DemoState): DemoState {
+/** Inquiries created via prospecting that can be quoted (no quote yet, or a rejected draft). */
+function quotableProspectInquiries(s: DemoState) {
+  return s.inquiries.filter(
+    (i) => i.prospectId && i.request && i.status !== "quoted" && !s.quotes.some((q) => q.inquiryId === i.id && q.status !== "draft"),
+  );
+}
+
+function prepareProspectQuote(s: DemoState, inq: Inquiry): DemoState {
+  const r = inq.request!;
+  const p = productOf(s, r.productCode);
+  const c = customerOf(s, inq.customerId);
+  const existing = s.quotes.find((q) => q.inquiryId === inq.id);
+  const maxNo = Math.max(2040, ...s.quotes.map((q) => Number(q.id.slice(4)) || 0));
+  const total = p.priceEur * r.quantity;
+  const quote: Quote = {
+    id: existing?.id ?? `TKF-${maxNo + 1}`,
+    customerId: c.id,
+    inquiryId: inq.id,
+    productCode: p.code,
+    quantity: r.quantity,
+    unitPrice: p.priceEur,
+    status: "pending_approval",
+    createdAt: DEMO_TODAY,
+  };
+  const country = COUNTRIES[s.prospects.find((x) => x.id === inq.prospectId)?.country ?? "DE"].en;
+  const approval: Approval = {
+    id: nextApprovalId(s),
+    kind: "quote",
+    title: `Teklif e-postası · ${quote.id}`,
+    customerId: c.id,
+    refId: quote.id,
+    to: c.email,
+    subject: `Quotation ${quote.id} – ${r.quantity} × ${p.code}`,
+    body: `Dear ${c.company} purchasing team,\n\nThank you for your interest. Please find our quotation below:\n\nProduct: ${p.code} (${p.name})\nQuantity: ${r.quantity} units\nUnit price: ${eur(p.priceEur)}\nTotal: ${eur(total)}\nDelivery: DAP ${r.deliveryCity}, ${country}\nLead time: ${p.leadTimeDays} days after order confirmation\nValidity: 30 days\n\nBest regards,\nElif Yıldız\nExport Manager · Atlas Office Furniture`,
+    status: "pending",
+    createdAt: nowStamp(),
+  };
+  let n: DemoState = {
+    ...s,
+    quotes: existing ? s.quotes.map((q) => (q.id === quote.id ? quote : q)) : [quote, ...s.quotes],
+    inquiries: s.inquiries.map((i) => (i.id === inq.id ? { ...i, status: "ready" } : i)),
+    approvals: [approval, ...s.approvals],
+    focusApprovalId: approval.id,
+  };
+  n = log(n, `${quote.id} hesaplandı (${inq.id}): ${r.quantity} × ${eurUiCents(p.priceEur)} = ${eurUiCents(total)}.`, "quote");
+  return say(
+    n,
+    agent(`${c.company} talebi (${inq.id}) için katalogdaki örnek fiyatla teklif hesaplandı:`, {
+      bullets: [`${p.code} ${p.name}`, `${r.quantity} adet × ${eurUiCents(p.priceEur)} = ${eurUiCents(total)}`, `Min. sipariş ${p.moq} adet ✓ · Üretim süresi ${p.leadTimeDays} gün`],
+      note: `Teklif e-postası onay bekliyor (${approval.id}). Sağ panelde düzenleyebilirsiniz.`,
+    }),
+  );
+}
+
+function prepareQuote(s: DemoState, inquiryId?: string): DemoState {
+  const prospectInqs = quotableProspectInquiries(s);
+  const explicit = inquiryId && prospectInqs.find((i) => i.id === inquiryId);
+  if (explicit) return prepareProspectQuote(s, explicit);
+  if (inquiryId && inquiryId !== SCENARIO_INQUIRY) {
+    return say(s, agent(`${inquiryId} için hazırlanacak yeni bir teklif yok; mevcut teklif durumunu Teklifler ekranında görebilirsiniz.`));
+  }
+  if (!inquiryId && s.step !== 4 && prospectInqs.length) return prepareProspectQuote(s, prospectInqs[0]);
   if (s.step < 4) {
     return say(
       s,
@@ -277,6 +342,25 @@ function draftFollowUp(s: DemoState): DemoState {
   return say(n, agent(`${c.company} için ${target.id} takip mesajı hazırlandı. Taslak sağ panelde ve Onaylar ekranında.`, { note: `Onay kaydı: ${approval.id}` }));
 }
 
+function researchProspects(s: DemoState): DemoState {
+  const f = s.prospectFilters;
+  const list = filterProspects(s.prospects, f);
+  const n: DemoState = { ...s, prospectsShown: true };
+  return say(
+    n,
+    agent(
+      list.length
+        ? `Seçili filtrelerle (${describeFilters(f)}) ${list.length} örnek aday listelendi:`
+        : `Seçili filtrelerle (${describeFilters(f)}) eşleşen örnek aday yok. Müşteri Bulma ekranında filtreleri değiştirebilirsiniz.`,
+      {
+        bullets: list.map((p) => `${p.company} · ${COUNTRIES[p.country].tr} · ${TYPES[p.type].tr} — ${PROSPECT_STATUS[p.status]}`),
+        note: "Örnek veri — gerçek araştırma yapılmaz. Sonuçlar demo listesinden filtrelenir.",
+        actions: [{ label: "Sonuçları Müşteri Bulma'da aç", command: "", href: "/musteri-bulma", primary: true }],
+      },
+    ),
+  );
+}
+
 /* ------------------------------------------------------------------ */
 
 export function nextScenarioActions(s: DemoState): ChatAction[] {
@@ -304,13 +388,14 @@ export function runCommand(s: DemoState, raw: string): DemoState {
   const withUser = say(s, { id: uid("c"), role: "user", text });
   const t = norm(text);
 
+  if (t.includes("araştır") || t.includes("aday") || t.includes("hedef pazar")) return researchProspects(withUser);
   if (t.includes("müşteri yanıt") || t.includes("yanıtı yükle")) return loadCustomerReply(withUser);
   if (t.includes("taslağı hazırla") || t.includes("yanıt taslağı")) return draftReply(withUser);
   if (t.includes("yanıtsız") || t.includes("cevapsız")) return findUnanswered(withUser);
   if (t.includes("takip")) return draftFollowUp(withUser);
   if (t.includes("talebi incele") || t === "incele") return reviewInquiry(withUser);
   if (t.includes("talep")) return reviewNew(withUser);
-  if (t.includes("teklif")) return prepareQuote(withUser);
+  if (t.includes("teklif")) return prepareQuote(withUser, text.match(/TLP-\d+/i)?.[0].toUpperCase());
 
   return say(
     withUser,
@@ -346,6 +431,28 @@ export function approve(s: DemoState, id: string, edits: { subject: string; body
     };
     n = log(n, `${a.id} onaylandı; TLP-1042 müşteri yanıtı bekliyor.`, "approval");
     return say(n, agent(`${SENT_NOTICE} TLP-1042 artık müşteri yanıtı bekliyor.`, { actions: [act("Örnek müşteri yanıtını yükle", true)] }));
+  }
+
+  if (a.kind === "quote" && a.refId !== SCENARIO_QUOTE) {
+    const follow = addDays(DEMO_TODAY, 5);
+    const q = n.quotes.find((x) => x.id === a.refId)!;
+    n = addHistory(`${a.refId} teklifi gönderildi (demo gönderimi).`);
+    n = {
+      ...n,
+      quotes: n.quotes.map((x) => (x.id === a.refId ? { ...x, status: "sent", sentAt: DEMO_TODAY, followUpDate: follow } : x)),
+      inquiries: n.inquiries.map((i) => (i.id === q.inquiryId ? { ...i, status: "quoted" } : i)),
+      tasks: [
+        { id: `GRV-${11 + n.tasks.length}`, title: `${c.company} · ${a.refId} için takip`, dueDate: follow, quoteId: a.refId, customerId: c.id, done: false },
+        ...n.tasks,
+      ],
+    };
+    n = log(n, `${a.refId} gönderildi olarak işaretlendi; ${formatDate(follow)} için takip görevi oluşturuldu.`, "task");
+    return say(
+      n,
+      agent(SENT_NOTICE, {
+        bullets: [`${a.refId} durumu: Gönderildi`, `Takip görevi: ${formatDate(follow)}`, edited ? "Taslak düzenlenmiş haliyle onaylandı" : "Taslak olduğu gibi onaylandı"],
+      }),
+    );
   }
 
   if (a.kind === "quote") {
@@ -396,6 +503,11 @@ export function reject(s: DemoState, id: string): DemoState {
   if (a.kind === "reply") {
     n = { ...n, step: 2 };
     return say(n, agent(`${a.id} reddedildi. Yeni bir taslak hazırlayabilirim.`, { actions: [act("Yanıt taslağı hazırla", true)] }));
+  }
+  if (a.kind === "quote" && a.refId !== SCENARIO_QUOTE) {
+    const q = n.quotes.find((x) => x.id === a.refId)!;
+    n = { ...n, quotes: n.quotes.map((x) => (x.id === a.refId ? { ...x, status: "draft" } : x)) };
+    return say(n, agent(`${a.id} reddedildi; ${a.refId} taslak durumuna alındı.`, { actions: [act("Teklifi yeniden hazırla", true, `Teklif hazırla ${q.inquiryId}`)] }));
   }
   if (a.kind === "quote") {
     n = { ...n, step: 4, quotes: n.quotes.map((q) => (q.id === a.refId ? { ...q, status: "draft" } : q)) };

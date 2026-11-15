@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Bot, Check, MessageSquare, ScanText, TriangleAlert } from "lucide-react";
 import { useDemo } from "@/lib/store";
 import { customerOf } from "@/lib/agent";
@@ -10,7 +10,8 @@ import { Badge, Button, Card, CardHeader, Label, Mono, PageIntro, cx } from "@/c
 import { InquiryBadge } from "@/components/status";
 
 function Inquiries() {
-  const { state } = useDemo();
+  const { state, run } = useDemo();
+  const router = useRouter();
   const params = useSearchParams();
   const [sel, setSel] = useState(params.get("id") ?? state.inquiries[0].id);
   const inq = state.inquiries.find((i) => i.id === sel) ?? state.inquiries[0];
@@ -96,7 +97,18 @@ function Inquiries() {
               {inq.id === "TLP-1042" && inq.status !== "quoted" && (
                 <Button href="/ajan" icon={Bot} className="mt-4 w-full">Ajanda devam et</Button>
               )}
-              {inq.id !== "TLP-1042" && (
+              {inq.prospectId && (() => {
+                const quote = state.quotes.find((q) => q.inquiryId === inq.id && q.status !== "draft");
+                return quote ? (
+                  <p className="mt-4 text-[12.5px] text-muted">Teklif: <Mono className="text-ink">{quote.id}</Mono> · Teklifler ve Onaylar ekranından izlenir.</p>
+                ) : (
+                  <Button className="mt-4 w-full" icon={Bot} onClick={() => { run(`Teklif hazırla ${inq.id}`); router.push("/ajan"); }}>Ajanda teklif hazırla</Button>
+                );
+              })()}
+              {inq.prospectId && (
+                <p className="mt-2 text-[12px] text-muted">Kaynak: Müşteri Bulma · ilk temas yazışması</p>
+              )}
+              {inq.id !== "TLP-1042" && !inq.prospectId && (
                 <div className="mt-4">
                   <Label>Not</Label>
                   <p className="mt-1 text-[12.5px] text-muted">Bu talep demo senaryosunun dışında; yalnızca örnek olarak listelenir.</p>

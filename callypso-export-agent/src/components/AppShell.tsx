@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bell, Bot, CheckCircle2, FileText, Inbox, LayoutDashboard, Menu, Package, RotateCcw, Search, Users, X, CircleCheck,
+  Bell, Bot, CheckCircle2, Radar, FileText, Inbox, LayoutDashboard, Menu, Package, RotateCcw, Search, Users, X, CircleCheck,
 } from "lucide-react";
 import { useDemo } from "@/lib/store";
 import { COMPANY, DEMO_TODAY } from "@/lib/data";
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/", label: "Genel Bakış", icon: LayoutDashboard },
   { href: "/ajan", label: "Ajan", icon: Bot },
   { href: "/talepler", label: "Talepler", icon: Inbox },
+  { href: "/musteri-bulma", label: "Müşteri Bulma", icon: Radar },
   { href: "/musteriler", label: "Müşteriler", icon: Users },
   { href: "/teklifler", label: "Teklifler", icon: FileText },
   { href: "/urunler", label: "Ürünler", icon: Package },
@@ -96,6 +97,7 @@ function SearchBox() {
     const m = (s: string) => s.toLocaleLowerCase("tr").includes(t);
     const cust = (id: string) => state.customers.find((c) => c.id === id)?.company ?? "";
     return [
+      ...state.prospects.filter((p) => m(p.company) || m(p.city)).map((p) => ({ k: p.id, label: p.company, meta: "Müşteri adayı", href: `/musteri-bulma?id=${p.id}` })),
       ...state.customers.filter((c) => m(c.company) || m(c.contact) || m(c.country)).map((c) => ({ k: c.id, label: c.company, meta: `Müşteri · ${c.country}`, href: `/musteriler?id=${c.id}` })),
       ...state.inquiries.filter((i) => m(i.id) || m(i.subject) || m(cust(i.customerId))).map((i) => ({ k: i.id, label: `${i.id} · ${i.subject}`, meta: "Talep", href: `/talepler?id=${i.id}` })),
       ...state.quotes.filter((x) => m(x.id) || m(cust(x.customerId)) || m(x.productCode)).map((x) => ({ k: x.id, label: `${x.id} · ${cust(x.customerId)}`, meta: "Teklif", href: "/teklifler" })),

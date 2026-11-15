@@ -1,4 +1,5 @@
 import type { DemoState } from "./types";
+import { initialProspects } from "./prospects";
 
 export const DEMO_TODAY = "2026-11-14";
 export const SCENARIO_INQUIRY = "TLP-1042";
@@ -18,8 +19,11 @@ export const WELCOME_TEXT =
 
 export function initialState(): DemoState {
   return {
-    version: 1,
+    version: 2,
     step: 1,
+    prospects: initialProspects(),
+    prospectFilters: { country: "DE", group: "chair", type: "all" },
+    prospectsShown: false,
     products: [
       { code: "AT-E150", name: "Ergo Basic Çalışma Koltuğu", category: "Koltuk", priceEur: 142, moq: 50, leadTimeDays: 18 },
       { code: "AT-E200", name: "Ergo Pro E200 Ergonomik Koltuk", category: "Koltuk", priceEur: 189, moq: 50, leadTimeDays: 21 },

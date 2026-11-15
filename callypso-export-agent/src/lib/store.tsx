@@ -11,6 +11,8 @@ type Ctx = {
   state: DemoState;
   ready: boolean;
   run: (command: string) => void;
+  /** Apply a pure state transition (used by the prospecting module). */
+  apply: (fn: (s: DemoState) => DemoState) => void;
   approve: (id: string, edits: { subject: string; body: string }) => void;
   reject: (id: string) => void;
   toggleTask: (id: string) => void;
@@ -20,6 +22,7 @@ type Ctx = {
     newInquiries: number;
     openQuotes: number;
     pendingApprovals: number;
+    listedProspects: number;
     openTasks: number;
     unanswered: number;
     pipelineEur: number;
@@ -57,6 +60,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
   }, [state]);
 
   const run = useCallback((c: string) => setState((s) => runCommand(s, c)), []);
+  const apply = useCallback((fn: (s: DemoState) => DemoState) => setState(fn), []);
   const approve = useCallback((id: string, e: { subject: string; body: string }) => setState((s) => approveFn(s, id, e)), []);
   const reject = useCallback((id: string) => setState((s) => rejectFn(s, id)), []);
   const toggleTask = useCallback(
@@ -79,6 +83,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       newInquiries: state.inquiries.filter((i) => i.status === "new").length,
       openQuotes: open.length,
       pendingApprovals: state.approvals.filter((a) => a.status === "pending").length,
+      listedProspects: state.prospects.filter((p) => p.status !== "candidate").length,
       openTasks: state.tasks.filter((t) => !t.done).length,
       unanswered: state.quotes.filter(isUnanswered).length,
       pipelineEur: open.reduce((sum, q) => sum + q.unitPrice * q.quantity, 0),
@@ -86,7 +91,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
   }, [state]);
 
   return (
-    <DemoContext.Provider value={{ state, ready, run, approve, reject, toggleTask, reset, dismissToast, stats }}>
+    <DemoContext.Provider value={{ state, ready, run, apply, approve, reject, toggleTask, reset, dismissToast, stats }}>
       {children}
     </DemoContext.Provider>
   );
